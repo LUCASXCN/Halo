@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif; -webkit-font-smoothing:antialiased; }
+  body { background:transparent; }
+  svg { display:block; }
+  .stage { width:1260px; height:900px; display:flex; gap:46px; justify-content:center; align-items:center;
+           background:linear-gradient(160deg,#bfe8ff 0%,#d9f1ff 45%,#eef9ff 100%); padding:40px; }
+  .phone { width:350px; height:800px; border-radius:54px; background:#0c1424; padding:11px;
+           box-shadow:0 30px 60px rgba(16,72,120,.32), inset 0 0 0 2px rgba(255,255,255,.18); }
+  .screen { width:100%; height:100%; border-radius:44px; overflow:hidden; position:relative;
+            background:linear-gradient(165deg,#87d3fb,#bfe6ff 55%,#e8f6ff); display:flex; flex-direction:column; }
+  .notch { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:118px; height:34px; background:#0c1424; border-radius:20px; z-index:5; }
+  .topbar { margin-top:58px; padding:10px 22px 6px; display:flex; align-items:center; gap:8px;
+            font-size:14px; font-weight:700; color:#0b3a63; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#34c759; box-shadow:0 0 0 3px rgba(52,199,89,.2); }
+  .topbar .x { margin-left:auto; color:#3a6f9c; font-size:17px; }
+  .content { flex:1; padding:8px 18px; overflow:hidden; }
+  .glass { background:rgba(255,255,255,.55); backdrop-filter:blur(18px); border:1px solid rgba(255,255,255,.85);
+           border-radius:24px; box-shadow:0 8px 24px rgba(31,102,160,.12); padding:18px; }
+  .label { font-size:12px; font-weight:800; color:#3f7aa8; letter-spacing:.3px; margin-bottom:12px; }
+  .lockhero { text-align:center; padding:22px 18px; }
+  .lockcircle { width:108px; height:108px; border-radius:50%; margin:4px auto 14px;
+                background:radial-gradient(circle at 35% 30%,#ffb27a,#ff8a3d); display:flex; align-items:center; justify-content:center;
+                box-shadow:0 14px 30px rgba(255,138,61,.4); }
+  .herot { font-size:16px; font-weight:700; color:#7a3b12; margin-bottom:16px; }
+  .btn { border-radius:16px; padding:14px; text-align:center; color:#fff; font-weight:700; font-size:16px;
+         background:linear-gradient(180deg,#ff9d4d,#f5771f); box-shadow:0 8px 18px rgba(245,119,31,.35); display:flex;gap:8px;align-items:center;justify-content:center; }
+  .row { display:flex; justify-content:space-between; font-size:13.5px; padding:7px 2px; color:#22507a; }
+  .row b { color:#0b3a63; font-weight:700; display:flex; gap:6px; align-items:center; }
+  .mini { width:8px;height:8px;border-radius:50%;background:#34c759; }
+  .mt { margin-top:13px; }
+  .slots { display:flex; gap:12px; }
+  .slot { flex:1; text-align:center; }
+  .slot .pv { height:84px; border-radius:16px; margin-bottom:7px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.6); position:relative;overflow:hidden; }
+  .day { background:linear-gradient(160deg,#75cbf9,#dff3ff); }
+  .day::after{content:"";position:absolute;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.85);left:-10px;top:-14px;}
+  .night { background:linear-gradient(160deg,#0d1433,#2b2a72); position:relative; }
+  .night::after{content:"";position:absolute;width:32px;height:32px;border-radius:50%;background:rgba(200,210,255,.95);right:14px;bottom:14px;box-shadow:0 0 18px rgba(180,190,255,.9);}
+  .slot .t { font-size:12.5px; font-weight:700; color:#0b3a63; }
+  .slot .s { font-size:11px; color:#5b8bb3; }
+  .up { display:flex; gap:10px; margin:13px 0; }
+  .upb { flex:1; text-align:center; font-size:12.5px; font-weight:700; padding:10px 4px; border-radius:13px; color:#0b63c7; background:rgba(255,255,255,.7); border:1px solid rgba(255,255,255,.9); }
+  .upb.p { color:#7a3bd8; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .cell { border-radius:15px; overflow:hidden; background:rgba(255,255,255,.6); }
+  .cell .im { height:80px; position:relative; }
+  .cell .cap { font-size:11.5px; padding:6px 8px; color:#0b3a63; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
+  .apply { margin-top:13px; border-radius:15px; padding:13px; text-align:center; color:#fff; font-weight:700;
+           background:linear-gradient(180deg,#2aa3ff,#0a74ef); box-shadow:0 8px 18px rgba(10,116,239,.32); font-size:15.5px; display:flex;gap:8px;align-items:center;justify-content:center; }
+  .blehero { text-align:center; padding:14px 18px; }
+  .bleicon { width:88px;height:88px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;
+             color:#15a05c;background:rgba(255,255,255,.6);box-shadow:0 0 0 8px rgba(52,199,89,.12),0 10px 24px rgba(31,120,80,.18); }
+  .blet { font-size:14px;font-weight:700;color:#11623a;margin-bottom:2px; }
+  .switch-row { display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:700; color:#0b3a63; padding:8px 2px; }
+  .sw { width:48px;height:29px;border-radius:16px;background:#34c759;position:relative;flex:none; }
+  .sw::after{content:"";position:absolute;width:25px;height:25px;border-radius:50%;background:#fff;top:2px;right:2px;box-shadow:0 2px 5px rgba(0,0,0,.2);}
+  .thr { font-size:12px; color:#22507a; margin:6px 0 4px; display:flex; justify-content:space-between; }
+  .track { height:6px;border-radius:4px;background:linear-gradient(90deg,#0a74ef 70%,#d4e4f2 70%); }
+  .track2 { background:linear-gradient(90deg,#0a74ef 55%,#d4e4f2 55%); }
+  .steps { font-size:11.5px; line-height:1.85; color:#33648e; }
+  .tabbar { height:68px; background:rgba(255,255,255,.62); backdrop-filter:blur(20px); border-top:1px solid rgba(255,255,255,.8); display:flex; }
+  .tab { flex:1; text-align:center; font-size:11px; font-weight:700; color:#5b8bb3; padding-top:9px; display:flex;flex-direction:column;align-items:center;gap:3px; }
+  .tab.on { color:#0a74ef; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <!-- 遥控 -->
+  <div class="phone"><div class="screen"><div class="notch"></div>
+    <div class="topbar"><span class="dot"></span>MacBook Pro<span class="x">✕</span></div>
+    <div class="content">
+      <div class="glass lockhero">
+        <div class="lockcircle">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>
+        </div>
+        <div class="herot">Mac 当前未锁定</div>
+        <div class="btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>立即锁定 Mac</div>
+      </div>
+      <div class="glass mt">
+        <div class="label">MAC 状态</div>
+        <div class="row"><span>设备</span><b>MacBook Pro</b></div>
+        <div class="row"><span>型号</span><b>MacBookPro18,1</b></div>
+        <div class="row"><span>登录密码已存</span><b><span class="mini"></span>是</b></div>
+        <div class="row"><span>桌面覆盖服务</span><b><span class="mini"></span>运行中</b></div>
+        <div class="row"><span>蓝牙</span><b><span class="mini"></span>已开启</b></div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>遥控</div>
+      <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 15l5-4 4 3 3-2.5L21 15"/></svg>壁纸</div>
+      <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 6.5a8 8 0 0 0 0 11M10.5 9a3.5 3.5 0 0 0 0 6"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>靠近</div>
+    </div>
+  </div></div>
+  <!-- 壁纸 -->
+  <div class="phone"><div class="screen"><div class="notch"></div>
+    <div class="topbar"><span class="dot"></span>MacBook Pro<span class="x">✕</span></div>
+    <div class="content">
+      <div class="glass">
+        <div class="slots">
+          <div class="slot"><div class="pv day"></div><div class="t">桌面壁纸</div><div class="s">Day</div></div>
+          <div class="slot"><div class="pv night"></div><div class="t">登录页壁纸</div><div class="s">Night</div></div>
+        </div>
+        <div class="up"><div class="upb">↑ 上传到桌面</div><div class="upb p">↑ 上传到登录页</div></div>
+        <div class="label">MAC 壁纸库</div>
+        <div class="grid">
+          <div class="cell"><div class="im day"></div><div class="cap"><span>Day</span><span>🖥 🔒</span></div></div>
+          <div class="cell"><div class="im night"></div><div class="cap"><span>Night</span><span>🖥 🔒</span></div></div>
+        </div>
+        <div class="apply"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>应用到 Mac</div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>遥控</div>
+      <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 15l5-4 4 3 3-2.5L21 15"/></svg>壁纸</div>
+      <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 6.5a8 8 0 0 0 0 11M10.5 9a3.5 3.5 0 0 0 0 6"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>靠近</div>
+    </div>
+  </div></div>
+  <!-- 靠近 -->
+  <div class="phone"><div class="screen"><div class="notch"></div>
+    <div class="topbar"><span class="dot"></span>MacBook Pro<span class="x">✕</span></div>
+    <div class="content">
+      <div class="glass blehero">
+        <div class="bleicon"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 6.5a8 8 0 0 0 0 11M10.5 9a3.5 3.5 0 0 0 0 6"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/></svg></div>
+        <div class="blet">已连接到 Mac（正在持续测距）</div>
+        <div class="switch-row"><span>开启蓝牙靠近广播</span><span class="sw"></span></div>
+      </div>
+      <div class="glass mt">
+        <div class="label">距离阈值（同步到 MAC）</div>
+        <div class="switch-row"><span>远离自动锁屏</span><span class="sw"></span></div>
+        <div class="switch-row"><span>靠近自动输入密码解锁</span><span class="sw"></span></div>
+        <div class="thr"><span>远离阈值</span><b>-70 dBm</b></div><div class="track"></div>
+        <div class="thr" style="margin-top:10px"><span>靠近阈值</span><b>-55 dBm</b></div><div class="track2"></div>
+        <div class="apply" style="margin-top:14px">同步设置到 Mac</div>
+      </div>
+      <div class="glass mt">
+        <div class="label">如何使用</div>
+        <div class="steps">1. Mac 端保存登录密码（仅存钥匙串）<br>2. 开启广播并在 Mac 绑定本机<br>3. 离开自动锁屏，靠近自动解锁</div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>遥控</div>
+      <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 15l5-4 4 3 3-2.5L21 15"/></svg>壁纸</div>
+      <div class="tab on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 6.5a8 8 0 0 0 0 11M10.5 9a3.5 3.5 0 0 0 0 6"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>靠近</div>
+    </div>
+  </div></div>
+</div>
+</body>
+</html>

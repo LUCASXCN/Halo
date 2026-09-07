@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_CN</string>
+    <key>CFBundleDisplayName</key>
+    <string>Halo 遥控</string>
+    <key>CFBundleExecutable</key>
+    <string>HaloRemote</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.lucas.haloremote</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>HaloRemote</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <!-- 手工打包（无 actool/Assets.car）：用扁平图标文件，iOS 按 @2x/@3x 自动匹配 -->
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>Icon-20</string>
+                <string>Icon-29</string>
+                <string>Icon-40</string>
+                <string>Icon-60</string>
+                <string>Icon-76</string>
+                <string>Icon-83.5</string>
+            </array>
+            <key>UIPrerenderedIcon</key>
+            <false/>
+        </dict>
+    </dict>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>MinimumOSVersion</key>
+    <string>26.0</string>
+    <key>DTPlatformName</key>
+    <string>iphoneos</string>
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string></string>
+    </dict>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+    </array>
+    <!-- 局域网明文 HTTP（仅本地 Wi-Fi） -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <!-- Bonjour 自动发现 Mac -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_halo._tcp</string>
+        <string>_halo._udp</string>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Halo 需要本地网络权限，以便在同一 Wi-Fi 下连接并遥控你的 Mac。</string>
+    <!-- 蓝牙靠近解锁 -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Halo 通过蓝牙让 Mac 感知你的距离，实现远离自动锁屏、靠近自动解锁。</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Halo 通过蓝牙广播供 Mac 测距。</string>
+    <!-- 相册选图上传为壁纸 -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>选择相册图片上传到 Mac，作为桌面或登录页壁纸。</string>
+</dict>
+</plist>

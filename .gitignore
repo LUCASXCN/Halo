@@ -1,0 +1,23 @@
+# 构建产物（二进制走 GitHub Releases，不入库）
+/build/
+/build-ios/
+/dist/
+*.app
+*.ipa
+*.zip
+*.dmg
+*.tar.gz
+
+# Xcode / Swift
+.DS_Store
+xcuserdata/
+*.swp
+DerivedData/
+
+# 本地工作 / 临时目录（绝不入库任何个人壁纸）
+/local/
+/tmp/
+*.userbak
+
+# 原始宣传截图（发布版在 docs/assets）
+assets/promo/shots/
