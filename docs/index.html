@@ -45,6 +45,8 @@
     padding:14px 30px;border-radius:16px;background:linear-gradient(180deg,#33b0ff,#0a74ef);
     box-shadow:0 14px 30px rgba(10,110,220,.38),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .15s,box-shadow .15s}
   .dl.ios{background:linear-gradient(180deg,#34c788,#12a15f);box-shadow:0 14px 30px rgba(18,161,95,.34),inset 0 1px 0 rgba(255,255,255,.35)}
+  .dl.ghost{background:rgba(255,255,255,.82);color:#0a74ef;border:1.5px solid rgba(10,116,239,.4);
+    box-shadow:0 10px 24px rgba(10,110,200,.16),inset 0 1px 0 rgba(255,255,255,.6)}
   .dl:hover{transform:translateY(-2px)}
   .dl-meta{margin-top:16px;font-size:13px;color:#1f5a8c}
   .privacy{margin-top:6px;font-size:12.5px;color:#2c6da0}
@@ -126,10 +128,11 @@
     <span class="chip">无需关闭 SIP</span>
   </div>
   <div class="dl-row">
-    <a class="dl" href="https://github.com/LUCASXCN/Halo/releases/latest">⬇ 下载 Halo for Mac</a>
-    <a class="dl ios" href="https://github.com/LUCASXCN/Halo/releases/latest">📱 下载 HaloRemote (IPA)</a>
+    <a class="dl" href="https://github.com/LUCASXCN/Halo/releases/download/v1.0.0/Halo.zip">⬇ 下载 Halo for Mac</a>
+    <a class="dl ios" href="https://github.com/LUCASXCN/Halo/releases/download/v1.0.0/HaloRemote-unsigned.ipa">📱 下载 HaloRemote（未签名 · 全能签主用）</a>
+    <a class="dl ghost" href="https://github.com/LUCASXCN/Halo/releases/download/v1.0.0/HaloRemote-adhoc.ipa">📱 ad-hoc 自签版（备用）</a>
   </div>
-  <div class="dl-meta">Mac：Universal 通用二进制 · macOS 26 及以上　｜　iPhone：未签名 arm64 IPA，用全能签等工具重签侧载</div>
+  <div class="dl-meta">Mac：Universal 通用二进制 · macOS 26 及以上　｜　iPhone：arm64 IPA · iOS 26 及以上，优先用「未签名版」交给全能签重签；若工具要求已签名包，再用 ad-hoc 版</div>
   <div class="privacy">🔒 壁纸与配置只存在本机，遥控仅限同一局域网，登录密码仅存 Mac 钥匙串</div>
 </header>
 
@@ -186,8 +189,8 @@
       <div class="install-col ios">
         <h3>📱 iPhone（HaloRemote）</h3>
         <ol class="steps">
-          <li>从 <a href="https://github.com/LUCASXCN/Halo/releases/latest"><b>Releases</b></a> 下载 <code>HaloRemote-unsigned.ipa</code>（未签名 arm64）。</li>
-          <li>用「全能签」等自签工具导入并用自己的证书重签、安装到 iPhone。</li>
+          <li>从 <a href="https://github.com/LUCASXCN/Halo/releases/latest"><b>Releases</b></a> 下载 <code>HaloRemote-unsigned.ipa</code>（未签名 arm64，全能签主用）；若签名工具要求包本身带签名，改用 <code>HaloRemote-adhoc.ipa</code>。</li>
+          <li>用「全能签」等自签工具导入并用自己的证书重签、安装到 iPhone（两个包内容一致，只差是否带 ad-hoc 占位签名）。</li>
           <li>首次打开在「设置 → 通用 → VPN 与设备管理」信任开发者证书。</li>
           <li>与 Mac 连同一 Wi‑Fi、开蓝牙，输入 Mac 上的 6 位配对码即可连接。</li>
         </ol>
