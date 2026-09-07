@@ -21,12 +21,12 @@ final class ProximityBeacon: NSObject, ObservableObject {
 
     private var manager: CBPeripheralManager!
     private var service: CBMutableService?
-    private let serviceUUID = CBUUID(string: Halo.bleService)
-    private let keepUUID = CBUUID(string: Halo.bleKeepChar)
+    private var serviceUUID: CBUUID?
 
     override init() {
         super.init()
-        // 初始不弹蓝牙授权，等用户在「靠近」页显式开启
+        // 完全惰性：init 不构造任何 CBUUID / CBPeripheralManager，
+        // 只有用户在「靠近」页显式开启时才初始化，从根上杜绝启动即崩。
     }
 
     func start() {
@@ -46,11 +46,15 @@ final class ProximityBeacon: NSObject, ObservableObject {
     }
 
     private func setupService() {
+        // 仅在真正开启广播时才安全构造 UUID
+        let svc = CBUUID.halo(Halo.bleService)
+        let keepUUID = CBUUID.halo(Halo.bleKeepChar)
+        self.serviceUUID = svc
         let keep = CBMutableCharacteristic(type: keepUUID,
                                           properties: [.read, .notify],
                                           value: Data("halo".utf8),
                                           permissions: [.readable])
-        let s = CBMutableService(type: serviceUUID, primary: true)
+        let s = CBMutableService(type: svc, primary: true)
         s.characteristics = [keep]
         service = s
         manager.removeAllServices()
@@ -59,8 +63,9 @@ final class ProximityBeacon: NSObject, ObservableObject {
 
     private func beginAdvertise() {
         setupService()
+        guard let svc = serviceUUID else { return }
         manager.startAdvertising([
-            CBAdvertisementDataServiceUUIDsKey: [serviceUUID],
+            CBAdvertisementDataServiceUUIDsKey: [svc],
             CBAdvertisementDataLocalNameKey: deviceShortName
         ])
         advertising = true

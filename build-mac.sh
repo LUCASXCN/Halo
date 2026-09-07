@@ -19,7 +19,7 @@ MACSDK="$XC/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 
 MAIN_FW=(-framework AppKit -framework SwiftUI -framework Combine -framework CryptoKit \
          -framework CoreBluetooth -framework Network -framework Security -framework ImageIO -framework CoreGraphics)
-MAIN_SRC=("$ROOT/src/shared/Protocol.swift" $ROOT/src/mac/core/*.swift \
+MAIN_SRC=("$ROOT/src/shared/Protocol.swift" "$ROOT/src/shared/ZoneEngine.swift" $ROOT/src/mac/core/*.swift \
           "$ROOT/src/mac/wallpaper/ImageEngine.swift" "$ROOT/src/mac/wallpaper/WallpaperController.swift" \
           $ROOT/src/mac/ui/*.swift)
 
@@ -28,9 +28,9 @@ echo "==> 1/6 编译覆盖进程 DesktopOverlay（universal2）"
 "$SW" -O -target x86_64-apple-$MIN -sdk "$MACSDK" "$ROOT/src/mac/wallpaper/DesktopOverlay.swift" -o /tmp/HaloDO.x86 -framework AppKit -framework IOKit
 "$LIPO" -create /tmp/HaloDO.arm /tmp/HaloDO.x86 -o /tmp/DesktopOverlay
 
-echo "==> 2/6 编译主程序 Halo（universal2）"
-"$SW" -O -target arm64-apple-$MIN -sdk "$MACSDK" "${MAIN_SRC[@]}" -o /tmp/HaloMain.arm "${MAIN_FW[@]}"
-"$SW" -O -target x86_64-apple-$MIN -sdk "$MACSDK" "${MAIN_SRC[@]}" -o /tmp/HaloMain.x86 "${MAIN_FW[@]}"
+echo "==> 2/6 编译主程序 Halo（universal2，静态链接 login.framework 锁屏符号）"
+"$SW" -O -target arm64-apple-$MIN -sdk "$MACSDK" "${MAIN_SRC[@]}" "$ROOT/vendor/login.tbd" -o /tmp/HaloMain.arm "${MAIN_FW[@]}"
+"$SW" -O -target x86_64-apple-$MIN -sdk "$MACSDK" "${MAIN_SRC[@]}" "$ROOT/vendor/login.tbd" -o /tmp/HaloMain.x86 "${MAIN_FW[@]}"
 "$LIPO" -create /tmp/HaloMain.arm /tmp/HaloMain.x86 -o /tmp/Halo
 
 echo "==> 3/6 组装 .app"

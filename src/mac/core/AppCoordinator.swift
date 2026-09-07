@@ -137,6 +137,13 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
 
     func remoteGetProximity() -> ProximityConfig { proximity.config }
     func remoteSetProximity(_ c: ProximityConfig) -> String? {
-        proximity.update(c); return nil
+        var merged = c
+        merged.normalize()
+        // 设备绑定关系只允许在 Mac 端修改：远程同步不得清空已绑定的 iPhone
+        if merged.peripheralUUID.isEmpty {
+            merged.peripheralUUID = proximity.config.peripheralUUID
+            merged.peripheralName = proximity.config.peripheralName
+        }
+        proximity.update(merged); return nil
     }
 }

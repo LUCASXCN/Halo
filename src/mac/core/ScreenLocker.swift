@@ -1,15 +1,49 @@
 //
 //  ScreenLocker.swift — 锁屏 / 自动输入密码解锁 / 锁屏状态监听（融合 BLEUnlock 原理）
 //  ─────────────────────────────────────────────────────────────────────────────
-//  · 锁屏：优先 macOS 私有 SACLockScreenImmediate（运行时解析，缺失则回退公开
-//    CGEvent 发送 ⌃⌘Q），跨 macOS 26/27 可用。
-//  · 解锁：CGEvent.keyboardSetUnicodeString 逐字符精确输入（不受键盘布局影响），
-//    投递到 .cghidEventTap 以到达 loginwindow，最后回车。密码只从 Keychain 取。
+//  · 锁屏：静态链接 login.framework 私有 SACLockScreenImmediate（与 BLEUnlock 同路径，
+//    已在 macOS 26/27 验证：调用后约 0.4s 进入锁定态）；极端情况下回退合成 ⌃⌘Q。
+//  · 锁屏状态判据：macOS 27 起 CGSessionCopyCurrentDictionary 不再返回
+//    kCGSSessionScreenIsLocked（恒读不到），改用系统权威的 Darwin notify 共享状态
+//    "com.apple.sessionagent.screenIsLocked"（loginwindow 锁屏时置 1、解锁置 0），
+//    分布式通知做即时响应、1s 轮询做兜底。
+//  · 解锁：CGEvent.keyboardSetUnicodeString 逐字符精确输入（与 BLEUnlock 一致，
+//    投递 .cghidEventTap 到达 loginwindow），最后回车。密码只从 Keychain 取。
 //
 
 import AppKit
 import CoreGraphics
 import Foundation
+
+// MARK: - 私有锁屏符号（编译期两级命名空间静态链接，见 vendor/login.tbd）
+@_silgen_name("SACLockScreenImmediate")
+private func haloSACLockScreenImmediate()
+
+// MARK: - Darwin notify 锁屏状态（系统权威共享状态，跨 macOS 26/27 可靠）
+@_silgen_name("notify_register_check")
+private func haloNotifyRegisterCheck(_ name: UnsafePointer<CChar>, _ token: UnsafeMutablePointer<Int32>) -> Int32
+@_silgen_name("notify_get_state")
+private func haloNotifyGetState(_ token: Int32, _ state: UnsafeMutablePointer<UInt64>) -> Int32
+
+/// 锁屏状态读取器：进程内只注册一次 notify token，之后只读共享内存（无分配、无权限弹窗）
+private final class LockStateReader {
+    static let shared = LockStateReader()
+    private let tokenName = "com.apple.sessionagent.screenIsLocked"
+    private var token: Int32 = -1
+    private let lock = NSLock()
+
+    /// 1=已锁屏，0=未锁屏，-1=读取失败
+    func rawValue() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        if token < 0 {
+            let t = haloNotifyRegisterCheck(tokenName, &token)
+            if t != 0 { token = -1; return -1 }
+        }
+        var s: UInt64 = 0
+        guard haloNotifyGetState(token, &s) == 0 else { return -1 }
+        return s == 0 ? 0 : 1
+    }
+}
 
 final class ScreenLocker {
     static let shared = ScreenLocker()
@@ -19,33 +53,38 @@ final class ScreenLocker {
 
     private var pollTimer: DispatchSourceTimer?
     private var lastLocked = false
+    // 分布式通知记录的状态，作为 notify 读取失败时的兜底
+    private var notifiedLocked = false
 
     private init() {}
 
     // MARK: 状态
 
-    /// 当前是否处于会话锁屏/登录窗
+    /// 当前是否处于会话锁屏/登录窗（macOS 27 权威判据）
     var isLocked: Bool {
-        guard let d = CGSessionCopyCurrentDictionary() as? [String: Any],
-              let v = d["kCGSSessionScreenIsLocked"] as? Int else { return false }
-        return v != 0
+        switch LockStateReader.shared.rawValue() {
+        case 1: return true
+        case 0: return false
+        default: return notifiedLocked   // notify 暂不可用时退回通知记录
+        }
     }
 
     func startObserving() {
         lastLocked = isLocked
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(forName: NSNotification.Name("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
-            self?.emit(true)
+            self?.notifiedLocked = true; self?.emit(true)
         }
         dnc.addObserver(forName: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
-            self?.emit(false)
+            self?.notifiedLocked = false; self?.emit(false)
         }
-        // 1s 轮询兜底，防止私有通知偶发丢失
+        // 1s 轮询兜底，防止私有通知偶发丢失（使用权威 notify 判据）
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + 1, repeating: 1)
         t.setEventHandler { [weak self] in
             guard let self else { return }
             let now = self.isLocked
+            self.notifiedLocked = now
             if now != self.lastLocked { self.emit(now) }
         }
         pollTimer = t; t.resume()
@@ -59,18 +98,13 @@ final class ScreenLocker {
 
     // MARK: 锁屏
 
-    /// 私有即时锁屏函数签名：void(void)
-    private typealias ImmediateLockFn = @convention(c) () -> Void
-
+    /// 静态链接的私有即时锁屏（与 BLEUnlock 完全相同的调用路径）
     private func privateLock() -> Bool {
-        guard let handle = dlopen("/System/Library/PrivateFrameworks/login.framework/login", RTLD_LAZY) else { return false }
-        guard let sym = dlsym(handle, "SACLockScreenImmediate") else { return false }
-        let fn = unsafeBitCast(sym, to: ImmediateLockFn.self)
-        fn()
+        haloSACLockScreenImmediate()
         return true
     }
 
-    /// 公开 API 兜底：模拟 ⌃⌘Q 锁屏快捷键
+    /// 公开 API 兜底：模拟 ⌃⌘Q 锁屏快捷键（仅当私有路径异常时）
     private func cgeventLock() {
         let src = CGEventSource(stateID: .hidSystemState)
         let vkQ: CGKeyCode = 12

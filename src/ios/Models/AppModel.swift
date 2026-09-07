@@ -11,7 +11,8 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
 
     let client = HaloClient()
-    let beacon = ProximityBeacon()
+    // 惰性：只有进入「靠近」页访问 beacon 时才初始化蓝牙，App 启动与其它页面完全不碰 CoreBluetooth
+    lazy var beacon = ProximityBeacon()
 
     @Published var ping: PingResponse?
     @Published var wallpapers: [WallpaperInfo] = []

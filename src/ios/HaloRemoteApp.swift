@@ -1,5 +1,5 @@
 //
-//  HaloRemoteApp.swift — iPhone App 入口（iOS 27 · SwiftUI · Liquid Glass）
+//  HaloRemoteApp.swift — iPhone App 入口（iOS 27 · SwiftUI · Liquid Glass · 深色模式）
 //
 
 import SwiftUI
@@ -34,18 +34,35 @@ struct RootView: View {
 struct MainTabs: View {
     @ObservedObject var model = AppModel.shared
     var body: some View {
-        TabView {
-            RemoteView(model: model)
-                .tabItem { Label("遥控", systemImage: "lock.fill") }
-            WallpaperView(model: model)
-                .tabItem { Label("壁纸", systemImage: "photo.fill") }
-            ProximityView(model: model)
-                .tabItem { Label("靠近", systemImage: "wave.3.right.circle.fill") }
-        }
-        .safeAreaInset(edge: .top) { topBar }
-        .tint(.blue)
+        tabs
+            .safeAreaInset(edge: .top, spacing: 4) { topBar }
+            .tint(.blue)
     }
 
+    // iOS 26+ 原生悬浮 Liquid Glass 胶囊底栏；向下滚动自动收缩为小胶囊
+    @ViewBuilder
+    private var tabs: some View {
+        if #available(iOS 26.0, *) {
+            TabView {
+                tabContents
+            }
+            .tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            TabView { tabContents }
+        }
+    }
+
+    @ViewBuilder
+    private var tabContents: some View {
+        RemoteView(model: model)
+            .tabItem { Label("遥控", systemImage: "lock.fill") }
+        WallpaperView(model: model)
+            .tabItem { Label("壁纸", systemImage: "photo.fill") }
+        ProximityView(model: model)
+            .tabItem { Label("靠近", systemImage: "wave.3.right.circle.fill") }
+    }
+
+    // 悬浮玻璃胶囊顶栏
     private var topBar: some View {
         HStack(spacing: 8) {
             StatusDot(ok: true)
@@ -54,11 +71,13 @@ struct MainTabs: View {
             Button {
                 model.disconnect()
             } label: {
-                Label("断开", systemImage: "xmark.circle").labelStyle(.iconOnly)
+                Label("断开", systemImage: "xmark.circle.fill").labelStyle(.iconOnly)
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .haloGlass(corner: 22)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
     }
 }

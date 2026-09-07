@@ -16,7 +16,7 @@ APPDIR="$BUILD/Payload/$APP.app"
 rm -rf "$BUILD"; mkdir -p "$APPDIR"
 
 echo "==> 1/4 收集源文件（共享契约 + iPhone 端）"
-SRCS=( "$ROOT/src/shared/Protocol.swift" )
+SRCS=( "$ROOT/src/shared/Protocol.swift" "$ROOT/src/shared/ZoneEngine.swift" )
 while IFS= read -r f; do SRCS+=( "$f" ); done < <(find "$ROOT/src/ios" -name '*.swift' | sort)
 echo "    共 ${#SRCS[@]} 个 Swift 文件"
 
@@ -47,14 +47,35 @@ if [ -f "$ICON_SRC" ]; then
   micon "Icon-83.5@2x.png" 167
   echo "    已生成多尺寸 App 图标"
 fi
-# 未签名：不生成 CodeResources，交由全能签重签
+# PkgInfo：对齐主流可侧载 App 的标准结构（SoniCast 等可装包均含此文件）
+printf 'APPL????' > "$APPDIR/PkgInfo"
 file "$APPDIR/$APP" | sed 's/^/    /'
 
-echo "==> 4/4 打包未签名 IPA"
+echo "==> 4/4 打包双版本（纯净未签名 + ad-hoc 自签）"
 cd "$BUILD"
-zip -qr "$APP-unsigned.ipa" Payload
+
+# 版本 A：纯净未签名 IPA（不含 _CodeSignature / embedded.mobileprovision）
+# —— 主用「全能签」等工具重签，结构与已验证可装的 SoniCast 完全一致
+rm -f "$APP-unsigned.ipa"
+zip -qry "$APP-unsigned.ipa" Payload
+
+# 版本 B：ad-hoc 自签 IPA（本机无 Apple 证书，只能做 ad-hoc；供 Sideloadly/AltStore/
+# 巨魔等偏好「已签名形态」的侧载工具，全能签同样可对其再次重签）
+cat > "$BUILD/HaloRemote.entitlements" <<'PL'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>get-task-allow</key><true/>
+</dict></plist>
+PL
+codesign --force --sign - --entitlements "$BUILD/HaloRemote.entitlements" "$APPDIR"
+rm -f "$APP-adhoc.ipa"
+zip -qry "$APP-adhoc.ipa" Payload
+
 cd "$ROOT"
 cp "$BUILD/$APP-unsigned.ipa" "$ROOT/$APP-unsigned.ipa"
+cp "$BUILD/$APP-adhoc.ipa"    "$ROOT/$APP-adhoc.ipa"
 echo ""
-echo "✅ 完成：$ROOT/$APP-unsigned.ipa"
-echo "   用全能签重签后安装；最低系统 iOS 26"
+echo "✅ 完成（最低系统 iOS 26，arm64）："
+echo "   A 未签名: $ROOT/$APP-unsigned.ipa  （全能签主用）"
+echo "   B 自签版: $ROOT/$APP-adhoc.ipa     （侧载工具备用，仍需重签才能上真机）"

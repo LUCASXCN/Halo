@@ -274,10 +274,16 @@ struct ContentView: View {
 
     private var bleColor: Color {
         if !model.prox.enabled { return .secondary }
-        switch model.ble.zone { case "near": return .green; case "far": return .orange; default: return .yellow }
+        switch model.ble.zone {
+        case "near": return .green
+        case "far": return .orange
+        case "unbound": return .orange
+        default: return .yellow
+        }
     }
     private var bleText: String {
         if !model.prox.enabled { return "未启用" }
+        if model.prox.peripheralUUID.isEmpty { return "已启用 · 请先在下方绑定 iPhone" }
         if model.ble.connected { return model.ble.zone == "near" ? "已连接 · 在附近" : "已连接 · 已远离" }
         if model.ble.powered { return "正在搜索 iPhone…" }
         return "蓝牙未开启"
@@ -325,8 +331,8 @@ struct WallpaperRow: View {
                 Text("已导入").font(.system(size: 9.5)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            assignButton(icon: "display", active: isDesktop, color: .blue) { model.desktopID = item.id }
-            assignButton(icon: "lock.fill", active: isLock, color: .purple) { model.lockID = item.id }
+            assignButton(icon: "display", active: isDesktop, color: .blue) { model.pickDesktop(item) }
+            assignButton(icon: "lock.fill", active: isLock, color: .purple) { model.pickLock(item) }
             if hover {
                 Button(role: .destructive) { model.confirmDelete(item) } label: {
                     Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 22, height: 22)

@@ -129,6 +129,7 @@ final class HaloStore {
         c.dwellSeconds = double("px.dwell", 2.5)
         c.peripheralUUID = string("px.uuid") ?? ""
         c.peripheralName = string("px.name") ?? ""
+        c.normalize()
         return c
     }
     func saveProximity(_ c: ProximityConfig) {

@@ -53,11 +53,13 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             self.overlayRunning = self.ctrl.agentRunning()
             self.hasPassword = Keychain.hasPassword
-            // 远程/外部改动后，让本地选中态跟随权威选择
+            // 远程/外部改动后，让本地选中态跟随权威选择；仅在真正变化时赋值，避免无谓重绘
             if let f = self.coord.selectedDesktopFile,
-               let it = self.items.first(where: { $0.url.lastPathComponent == f }) { self.desktopID = it.id }
+               let it = self.items.first(where: { $0.url.lastPathComponent == f }),
+               self.desktopID != it.id { self.desktopID = it.id }
             if let f = self.coord.selectedLockFile,
-               let it = self.items.first(where: { $0.url.lastPathComponent == f }) { self.lockID = it.id }
+               let it = self.items.first(where: { $0.url.lastPathComponent == f }),
+               self.lockID != it.id { self.lockID = it.id }
         }
     }
 
@@ -127,6 +129,22 @@ final class AppModel: ObservableObject {
     var desktopItem: WPItem? { items.first { $0.id == desktopID } }
     var lockItem: WPItem? { items.first { $0.id == lockID } }
 
+    // 点选即写入「权威选择源」sel.desktop/sel.lock：
+    // 否则 2s 同步定时器会用磁盘旧值把用户尚未点「应用」的本地选择盖回去，表现为选中态反复横跳。
+    // 选择意图与落地分离：这里只记录选了谁，真正渲染/覆盖仍由「应用」执行。
+    func pickDesktop(_ item: WPItem) {
+        desktopID = item.id
+        let f = item.url.lastPathComponent
+        HaloStore.shared.set("sel.desktop", f)
+        coord.selectedDesktopFile = f
+    }
+    func pickLock(_ item: WPItem) {
+        lockID = item.id
+        let f = item.url.lastPathComponent
+        HaloStore.shared.set("sel.lock", f)
+        coord.selectedLockFile = f
+    }
+
     func thumbnail(_ item: WPItem, edge: CGFloat) -> NSImage? {
         let key = "\(item.id)#\(Int(edge))" as NSString
         if let c = thumbCache.object(forKey: key) { return c }
@@ -180,9 +198,9 @@ final class AppModel: ObservableObject {
     func confirmDelete(_ item: WPItem) {
         confirm(text: "删除「\(item.name)」？", info: "只删除软件壁纸库内副本，不影响原始图片。") {
             try? FileManager.default.removeItem(at: item.url)
-            if self.desktopID == item.id { self.desktopID = self.items.first { $0.id != item.id }?.id }
-            if self.lockID == item.id { self.lockID = self.items.first { $0.id != item.id }?.id }
             self.loadLibrary()
+            if self.desktopID == item.id, let nxt = self.items.first(where: { $0.id != item.id }) { self.pickDesktop(nxt) }
+            if self.lockID == item.id, let nxt = self.items.first(where: { $0.id != item.id }) { self.pickLock(nxt) }
         }
     }
 

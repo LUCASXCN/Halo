@@ -20,12 +20,30 @@ enum Halo {
     static let apiVersion = 1
 
     // 自定义 BLE Service：iPhone 外设广播、Mac 中央扫描连接后测 RSSI 判距离
-    // 固定 128-bit UUID，避免与任何标准服务冲突
-    static let bleServiceUUID = "F4B1-0001-4A52-8F00-HAL0HAL00001".replacingOccurrences(of: "-", with: "")
-    static let bleService = "F4B10001-4A52-8F00-0000-HAL0HAL00001"
+    // 固定 128-bit UUID（必须全部为十六进制 0-9A-F，否则 CBUUID 会直接抛异常崩溃）
+    // 末段 48414C4F 即 "HALO" 的 ASCII，十六进制合法且保留品牌含义。
+    static let bleService = "F4B10001-4A52-8F00-0000-48414C4F0001"
+    static let bleServiceUUID = bleService.replacingOccurrences(of: "-", with: "")
     /// 保活特征（读/通知，内容无意义，仅用于维持连接、让 RSSI 持续刷新）
-    static let bleKeepChar = "F4B10002-4A52-8F00-0000-HAL0HAL00001"
+    static let bleKeepChar = "F4B10002-4A52-8F00-0000-48414C4F0001"
 }
+
+#if canImport(CoreBluetooth)
+import CoreBluetooth
+extension CBUUID {
+    /// 安全构造：CBUUID(string:) 遇到非十六进制字符会抛 NSException 直接导致进程崩溃，
+    /// 且 Swift 的 do-catch 无法捕获 ObjC 异常。这里先做格式校验，非法时回退到编译期
+    /// 确定合法的固定 Service，从根上保证「任何情况下都不会因 UUID 崩溃」。
+    static func halo(_ s: String) -> CBUUID {
+        let hex = s.replacingOccurrences(of: "-", with: "")
+        let isHex = hex.allSatisfy { $0.isHexDigit }
+        let ok128 = hex.count == 32 && isHex
+        let ok16  = hex.count == 4 && isHex
+        if ok128 || ok16 { return CBUUID(string: s) }
+        return CBUUID(string: Halo.bleService)
+    }
+}
+#endif
 
 // MARK: - 枚举与基础模型
 
@@ -51,6 +69,15 @@ struct ProximityConfig: Codable, Equatable {
     /// 目标外设标识符（Mac 记住已配对的 iPhone）
     var peripheralUUID: String = ""
     var peripheralName: String = ""
+
+    /// 容错：把越界/自相矛盾的阈值拉回合法区间，避免坏配置导致误锁/无法解锁
+    mutating func normalize() {
+        awayRSSI = min(max(awayRSSI, -100), -40)
+        nearRSSI = min(max(nearRSSI, -90), -30)
+        // near 必须严格大于 away（靠近阈值没那么负）；颠倒则回退默认
+        if nearRSSI <= awayRSSI { awayRSSI = -70; nearRSSI = -55 }
+        dwellSeconds = min(max(dwellSeconds, 0.5), 30)
+    }
 }
 
 struct BLEStateInfo: Codable, Equatable {
