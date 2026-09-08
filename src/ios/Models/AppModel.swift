@@ -11,8 +11,8 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
 
     let client = HaloClient()
-    // 惰性：只有进入「靠近」页访问 beacon 时才初始化蓝牙，App 启动与其它页面完全不碰 CoreBluetooth
-    lazy var beacon = ProximityBeacon()
+    // iPhone 端不碰蓝牙 —— Mac 直接扫描 iPhone 系统蓝牙测距。
+    // 本端只通过 Wi-Fi 显示 Mac 蓝牙状态、远程开关靠近功能。
 
     @Published var ping: PingResponse?
     @Published var wallpapers: [WallpaperInfo] = []
@@ -79,6 +79,10 @@ final class AppModel: ObservableObject {
 
     func lockNow() async {
         do { try await client.lock(); toast("已让 Mac 锁屏") }
+        catch { toast(error.localizedDescription) }
+    }
+    func unlockNow() async {
+        do { try await client.unlock(); toast("已让 Mac 解锁") }
         catch { toast(error.localizedDescription) }
     }
 

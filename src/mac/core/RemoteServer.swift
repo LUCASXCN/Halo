@@ -14,6 +14,7 @@ protocol HaloServerDatasource: AnyObject {
     func makePing() -> PingResponse
     func makeStatus() -> StatusResponse
     func remoteLock()
+    func remoteUnlock()
     func remoteApply(desktopID: String?, lockID: String?) -> String?
     func remoteSetSlot(slot: SlotKind, id: String) -> String?
     /// 返回 (图片信息, 错误)；错误为 nil 即成功
@@ -118,6 +119,8 @@ final class RemoteServer: ObservableObject {
             return Self.resp(.notFound, json: SimpleResult(ok: false, error: "no image"))
         case ("POST", HaloRoute.lock):
             ds.remoteLock(); return Self.resp(.ok, json: SimpleResult(ok: true))
+        case ("POST", HaloRoute.unlock):
+            ds.remoteUnlock(); return Self.resp(.ok, json: SimpleResult(ok: true))
         case ("POST", HaloRoute.apply):
             guard let b = HaloJSON.decode(ApplyRequest.self, from: req.body) else {
                 return Self.resp(.badRequest, json: SimpleResult(ok: false, error: "bad body")) }

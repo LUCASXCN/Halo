@@ -21,16 +21,23 @@ struct RemoteView: View {
     }
 
     private var lockCard: some View {
-        VStack(spacing: 16) {
-            Image(systemName: (ping?.locked ?? false) ? "lock.fill" : "lock.open.fill")
+        let locked = ping?.locked ?? false
+        return VStack(spacing: 16) {
+            Image(systemName: locked ? "lock.fill" : "lock.open.fill")
                 .font(.system(size: 54, weight: .medium))
-                .foregroundStyle((ping?.locked ?? false) ? .orange : .green)
+                .foregroundStyle(locked ? .blue : .orange)
                 .padding(26)
                 .haloGlass(corner: 34)
-            Text((ping?.locked ?? false) ? "Mac 当前已锁定" : "Mac 当前未锁定")
+            Text(locked ? "Mac 当前已锁定" : "Mac 当前未锁定")
                 .font(.headline)
-            GlassPrimaryButton(title: "立即锁定 Mac", systemImage: "lock.fill", tint: .orange) {
-                Task { await model.lockNow() }
+            if locked {
+                GlassPrimaryButton(title: "解锁 Mac", systemImage: "lock.open.fill", tint: .blue) {
+                    Task { await model.unlockNow() }
+                }
+            } else {
+                GlassPrimaryButton(title: "立即锁定 Mac", systemImage: "lock.fill", tint: .orange) {
+                    Task { await model.lockNow() }
+                }
             }
         }
         .padding(22)

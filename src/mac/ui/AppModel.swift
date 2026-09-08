@@ -41,7 +41,11 @@ final class AppModel: ObservableObject {
         pairCode = HaloStore.shared.pairCode
         ipAddresses = HaloCore.ipv4Addresses
         remoteEnabled = HaloStore.shared.remoteEnabled
-        hasPassword = Keychain.hasPassword
+        // 钥匙串读取放后台异步，避免阻塞主线程（macOS 27 钥匙串访问可能触发授权弹窗）
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let has = Keychain.hasPassword
+            DispatchQueue.main.async { self?.hasPassword = has }
+        }
         prox = coord.proximity.config
 
         coord.proximity.$state.receive(on: DispatchQueue.main).sink { [weak self] in self?.ble = $0 }.store(in: &bag)
@@ -52,7 +56,11 @@ final class AppModel: ObservableObject {
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.overlayRunning = self.ctrl.agentRunning()
-            self.hasPassword = Keychain.hasPassword
+            // 钥匙串读取放后台异步
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let has = Keychain.hasPassword
+                DispatchQueue.main.async { self?.hasPassword = has }
+            }
             // 远程/外部改动后，让本地选中态跟随权威选择；仅在真正变化时赋值，避免无谓重绘
             if let f = self.coord.selectedDesktopFile,
                let it = self.items.first(where: { $0.url.lastPathComponent == f }),
@@ -217,7 +225,10 @@ final class AppModel: ObservableObject {
 
     func savePassword() {
         coord.setPassword(passwordField)
-        hasPassword = Keychain.hasPassword
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let has = Keychain.hasPassword
+            DispatchQueue.main.async { self?.hasPassword = has }
+        }
         passwordField = ""
         notice = hasPassword ? "已保存自动解锁密码（仅存本机钥匙串）" : "已清除自动解锁密码"
     }

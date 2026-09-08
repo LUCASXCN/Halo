@@ -19,7 +19,7 @@ import Foundation
 
 struct ZoneDecisionEngine {
     enum Action: Equatable { case none, lock, unlock }
-    private enum Zone { case searching, near, far }
+    enum Zone { case searching, near, far }
 
     // 阈值与驻留（可随配置更新）
     var awayRSSI: Int
@@ -33,6 +33,9 @@ struct ZoneDecisionEngine {
     private var samples: [Int] = []
     private var candidateFarAt: Date?
     private var candidateNearAt: Date?
+
+    /// 当前区域（供外层判断是否仍在远处）
+    var currentZone: Zone { zone }
 
     init(awayRSSI: Int, nearRSSI: Int, dwellSeconds: Double) {
         self.awayRSSI = awayRSSI

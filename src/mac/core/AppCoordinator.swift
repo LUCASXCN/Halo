@@ -28,20 +28,31 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
     func boot() {
         guard !started else { return }
         started = true
-        hasPassword = Keychain.hasPassword
         locked = locker.isLocked
         selectedDesktopFile = HaloStore.shared.string("sel.desktop")
         selectedLockFile = HaloStore.shared.string("sel.lock")
 
         locker.onLockStateChange = { [weak self] l in
             self?.locked = l
-            if !l { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self?.hasPassword = Keychain.hasPassword } }
+            if !l {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let has = Keychain.hasPassword
+                    DispatchQueue.main.async { self?.hasPassword = has }
+                }
+            }
         }
         locker.startObserving()
         proximity.start()
 
         server.datasource = self
         if HaloStore.shared.remoteEnabled { server.start() }
+
+        // 钥匙串读取可能触发系统授权弹窗（ad-hoc 重签后授权会重置），
+        // 必须放后台异步，绝不能阻塞主线程 —— 否则 server.start() / 菜单栏都不会执行。
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let has = Keychain.hasPassword
+            DispatchQueue.main.async { self?.hasPassword = has }
+        }
 
         // 周期性刷新覆盖进程状态
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -55,7 +66,10 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
 
     func setPassword(_ pw: String) {
         if pw.isEmpty { Keychain.clear() } else { Keychain.save(password: pw) }
-        hasPassword = Keychain.hasPassword
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let has = Keychain.hasPassword
+            DispatchQueue.main.async { self?.hasPassword = has }
+        }
     }
 
     func apply(desktop: WPItem, lock: WPItem, keepAwake: Bool) -> String? {
@@ -73,7 +87,7 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
     func makePing() -> PingResponse {
         PingResponse(api: Halo.apiVersion,
                      name: HaloCore.macName, model: HaloCore.macModel, version: HaloCore.version,
-                     locked: locker.isLocked, hasPassword: Keychain.hasPassword,
+                     locked: locker.isLocked, hasPassword: hasPassword,
                      overlayRunning: wallpapers.agentRunning(),
                      ble: proximity.state, proximity: proximity.config)
     }
@@ -91,6 +105,15 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
     }
 
     func remoteLock() { locker.lockNow() }
+
+    /// 远程解锁：唤醒显示器 → 等密码框就绪 → 从钥匙串输入密码
+    func remoteUnlock() {
+        guard locker.isLocked else { return }
+        locker.wakeDisplay()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            self.locker.autoUnlockFromKeychain()
+        }
+    }
 
     func remoteApply(desktopID: String?, lockID: String?) -> String? {
         let d = desktopID ?? HaloStore.shared.string("sel.desktop")

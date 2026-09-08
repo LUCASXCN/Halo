@@ -1,5 +1,6 @@
 //
 //  WallpaperView.swift — 远程选择 Mac 桌面 / 登录页壁纸，支持相册上传
+//  壁纸库：左右滑动分页查看，底部大按钮一键指派
 //
 
 import SwiftUI
@@ -9,14 +10,14 @@ struct WallpaperView: View {
     @ObservedObject var model: AppModel
     @State private var assignSlot: SlotKind?
     @State private var pickerItem: PhotosPickerItem?
-    @State private var columns = [GridItem(.adaptive(minimum: 104), spacing: 12)]
+    @State private var currentPage = 0
 
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
                 slots
                 uploadBar
-                grid
+                wallpaperLibrary
                 applyBar
             }
             .padding(20)
@@ -83,17 +84,79 @@ struct WallpaperView: View {
         }
     }
 
-    private var grid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionTitle(icon: "photo.on.rectangle.angled", text: "Mac 壁纸库 · 点图下方按钮指派")
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(model.wallpapers) { wp in
-                    WallpaperCell(model: model, wp: wp)
+    // MARK: - 壁纸库：左右滑动分页 + 底部大按钮
+
+    private var wallpaperLibrary: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle(icon: "photo.on.rectangle.angled", text: "Mac 壁纸库 · 左右滑动查看")
+
+            if model.wallpapers.isEmpty {
+                Text("壁纸库为空，先从上方上传图片")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 40)
+            } else {
+                // 横向分页滑动
+                TabView(selection: $currentPage) {
+                    ForEach(Array(model.wallpapers.enumerated()), id: \.element.id) { idx, wp in
+                        WallpaperPage(model: model, wp: wp)
+                            .tag(idx)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                // 页码指示
+                HStack(spacing: 6) {
+                    ForEach(0..<model.wallpapers.count, id: \.self) { i in
+                        Circle()
+                            .fill(i == currentPage ? Color.blue : Color.secondary.opacity(0.3))
+                            .frame(width: 7, height: 7)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                // 当前壁纸名
+                if let wp = currentWallpaper {
+                    Text(wp.name).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity)
+                }
+
+                // 底部两个大按钮
+                HStack(spacing: 12) {
+                    assignButton(title: "桌面壁纸", systemImage: "desktopcomputer",
+                                 tint: .blue, slot: .desktop, isActive: model.desktopID == currentWallpaper?.id)
+                    assignButton(title: "登录页壁纸", systemImage: "lock",
+                                 tint: .purple, slot: .lock, isActive: model.lockID == currentWallpaper?.id)
                 }
             }
         }
         .padding(18)
         .haloGlass()
+    }
+
+    private var currentWallpaper: WallpaperInfo? {
+        guard currentPage < model.wallpapers.count else { return nil }
+        return model.wallpapers[currentPage]
+    }
+
+    private func assignButton(title: String, systemImage: String, tint: Color,
+                              slot: SlotKind, isActive: Bool) -> some View {
+        Button {
+            guard let wp = currentWallpaper else { return }
+            Task { await model.assign(slot, id: wp.id) }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: isActive ? "\(systemImage).circle.fill" : systemImage)
+                    .font(.title2)
+                Text(title).font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(isActive ? tint : tint.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: tint.opacity(0.2), radius: 8, y: 3)
     }
 
     private var applyBar: some View {
@@ -111,30 +174,20 @@ struct WallpaperView: View {
     }
 }
 
-private struct WallpaperCell: View {
+// 单页壁纸大图
+private struct WallpaperPage: View {
     @ObservedObject var model: AppModel
     let wp: WallpaperInfo
     var body: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14).fill(.thinMaterial).frame(height: 104)
-                if let img = model.thumbnail(wp.id) {
-                    Image(uiImage: img).resizable().scaledToFill()
-                        .frame(height: 104).clipShape(RoundedRectangle(cornerRadius: 14))
-                } else { ProgressView() }
+        ZStack {
+            RoundedRectangle(cornerRadius: 20).fill(.thinMaterial)
+            if let img = model.thumbnail(wp.id) {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                ProgressView()
             }
-            Text(wp.name).font(.caption2).lineLimit(1)
-            HStack(spacing: 6) {
-                Button {
-                    Task { await model.assign(.desktop, id: wp.id) }
-                } label: { Image(systemName: model.desktopID == wp.id ? "desktopcomputer.circle.fill" : "desktopcomputer") }
-                    .buttonStyle(.borderless)
-                Button {
-                    Task { await model.assign(.lock, id: wp.id) }
-                } label: { Image(systemName: model.lockID == wp.id ? "lock.circle.fill" : "lock") }
-                    .buttonStyle(.borderless)
-            }
-            .font(.body)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding(.horizontal, 4)
     }
 }

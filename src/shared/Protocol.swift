@@ -66,6 +66,8 @@ struct ProximityConfig: Codable, Equatable {
     var nearRSSI: Int = -55
     /// 连续满足多少秒才触发（防抖）
     var dwellSeconds: Double = 2.5
+    /// 延迟锁定：超过远离阈值后等待多少秒才锁屏（5/10/15/30），同时也是断开后的宽限期
+    var lockDelay: Int = 10
     /// 目标外设标识符（Mac 记住已配对的 iPhone）
     var peripheralUUID: String = ""
     var peripheralName: String = ""
@@ -77,6 +79,7 @@ struct ProximityConfig: Codable, Equatable {
         // near 必须严格大于 away（靠近阈值没那么负）；颠倒则回退默认
         if nearRSSI <= awayRSSI { awayRSSI = -70; nearRSSI = -55 }
         dwellSeconds = min(max(dwellSeconds, 0.5), 30)
+        lockDelay = min(max(lockDelay, 3), 60)
     }
 }
 
@@ -154,6 +157,7 @@ enum HaloRoute {
     static let thumb = "/thumb/"       // +id
     static let image = "/image/"       // +id
     static let lock = "/lock"
+    static let unlock = "/unlock"
     static let apply = "/apply"
     static let setSlot = "/set-slot"
     static let upload = "/upload"

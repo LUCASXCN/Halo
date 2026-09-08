@@ -34,9 +34,11 @@ struct RootView: View {
 struct MainTabs: View {
     @ObservedObject var model = AppModel.shared
     var body: some View {
-        tabs
-            .safeAreaInset(edge: .top, spacing: 4) { topBar }
-            .tint(.blue)
+        VStack(spacing: 0) {
+            topBar
+            tabs
+        }
+        .tint(.blue)
     }
 
     // iOS 26+ 原生悬浮 Liquid Glass 胶囊底栏；向下滚动自动收缩为小胶囊
@@ -62,7 +64,7 @@ struct MainTabs: View {
             .tabItem { Label("靠近", systemImage: "wave.3.right.circle.fill") }
     }
 
-    // 悬浮玻璃胶囊顶栏
+    // 玻璃顶栏（固定在顶部，不悬浮遮挡内容）
     private var topBar: some View {
         HStack(spacing: 8) {
             StatusDot(ok: true)
@@ -78,6 +80,7 @@ struct MainTabs: View {
         .padding(.horizontal, 14).padding(.vertical, 10)
         .haloGlass(corner: 22)
         .padding(.horizontal, 14)
-        .padding(.top, 6)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 }

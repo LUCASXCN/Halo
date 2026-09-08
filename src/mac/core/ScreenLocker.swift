@@ -14,6 +14,8 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import IOKit
+import IOKit.pwr_mgt
 
 // MARK: - 私有锁屏符号（编译期两级命名空间静态链接，见 vendor/login.tbd）
 @_silgen_name("SACLockScreenImmediate")
@@ -120,6 +122,30 @@ final class ScreenLocker {
     func lockNow() {
         DispatchQueue.main.async {
             if !self.privateLock() { self.cgeventLock() }
+        }
+    }
+
+    // MARK: 唤醒显示器（靠近解锁时先唤醒，避免黑屏态密码框不显示）
+
+    /// 唤醒显示器 + 持有短时唤醒断言，确保密码框可见后再输入密码
+    func wakeDisplay() {
+        // 发送一个相对位移为 0 的鼠标事件，唤醒显示器（不改变光标位置）
+        let src = CGEventSource(stateID: .hidSystemState)
+        if let move = CGEvent(mouseEventSource: src, mouseType: .mouseMoved,
+                               mouseCursorPosition: CGPoint(x: 0, y: 0), mouseButton: .left) {
+            move.post(tap: .cghidEventTap)
+        }
+        // 持有 15 秒唤醒断言，防止输入密码期间显示器再次休眠
+        var assertion: IOPMAssertionID = 0
+        IOPMAssertionCreateWithName(
+            "PreventUserIdleDisplaySleep" as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "Halo 靠近解锁期间保持显示器唤醒" as CFString,
+            &assertion
+        )
+        // 15 秒后释放断言
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 15) {
+            IOPMAssertionRelease(assertion)
         }
     }
 

@@ -245,6 +245,21 @@ struct ContentView: View {
                 thresholdRow(title: "靠近阈值", value: model.prox.nearRSSI, range: -75...(-35)) { v in
                     model.setProx { $0.nearRSSI = v }
                 }
+                // 延迟锁定
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("延迟锁定").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        ForEach([5, 10, 15, 30], id: \.self) { sec in
+                            if model.prox.lockDelay == sec {
+                                Button("\(sec)s") { model.setProx { $0.lockDelay = sec } }
+                                    .buttonStyle(.glassProminent).font(.system(size: 10.5))
+                            } else {
+                                Button("\(sec)s") { model.setProx { $0.lockDelay = sec } }
+                                    .buttonStyle(.glass).font(.system(size: 10.5))
+                            }
+                        }
+                    }
+                }
                 Button { model.startPairing() } label: {
                     Label("绑定我的 iPhone", systemImage: "antenna.radiowaves.left.and.right").font(.system(size: 11.5)).frame(maxWidth: .infinity)
                 }.buttonStyle(.glass).controlSize(.regular)

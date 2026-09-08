@@ -105,6 +105,9 @@ final class HaloClient: ObservableObject {
     func lock() async throws {
         _ = try await requestRaw(method: "POST", path: HaloRoute.lock, body: try? JSONEncoder().encode(LockRequest(confirm: true)))
     }
+    func unlock() async throws {
+        _ = try await requestRaw(method: "POST", path: HaloRoute.unlock, body: nil)
+    }
     func apply(desktop: String?, lock: String?) async throws {
         _ = try await requestRaw(method: "POST", path: HaloRoute.apply,
                                  body: HaloJSON.encode(ApplyRequest(desktopID: desktop, lockID: lock)))
