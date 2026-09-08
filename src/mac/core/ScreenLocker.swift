@@ -174,33 +174,67 @@ final class ScreenLocker {
         CGEvent(keyboardEventSource: src, virtualKey: vk, keyDown: false)?.post(tap: tap)
     }
 
-    /// 用 Keychain 中保存的密码自动解锁。返回是否最终进入解锁态。
+    /// 用 Keychain 中保存的密码自动解锁（BLEUnlock 原理：剪贴板粘贴 + 回车）。
     func autoUnlockFromKeychain(retry: Bool = true, completion: ((Bool) -> Void)? = nil) {
         guard isLocked, let password = Keychain.read(), !password.isEmpty else {
             completion?(false); return
         }
         DispatchQueue.global(qos: .userInitiated).async {
-            // 等登录窗密码框就绪
-            usleep(420_000)
-            self.performTyping(password)
+            // 等登录窗密码框就绪（BLEUnlock conservativeWakeUnlockDelay 原理）
+            usleep(500_000)
+            self.pasteAndUnlock(password)
             // 校验是否解锁；未解锁则补一次（首帧密码框可能尚未聚焦）
-            usleep(700_000)
+            usleep(800_000)
             if self.isLocked && retry {
-                usleep(400_000)
-                self.performTyping(password)
-                usleep(700_000)
+                usleep(300_000)
+                self.pasteAndUnlock(password)
+                usleep(800_000)
             }
             let ok = !self.isLocked
             DispatchQueue.main.async { completion?(ok) }
         }
     }
 
-    private func performTyping(_ password: String) {
-        // 先取消可能遮挡的通知/控制中心焦点
-        tapKey(53) // kVK_Escape
+    /// BLEUnlock 式解锁：密码写入剪贴板 → Cmd+V 粘贴 → Return 回车
+    private func pasteAndUnlock(_ password: String) {
+        // 1. 保存当前剪贴板内容，解锁后恢复
+        let pasteboard = NSPasteboard.general
+        let oldItems = pasteboard.pasteboardItems?.map { $0.string(forType: .string) ?? "" } ?? []
+        let oldString = oldItems.first ?? ""
+
+        // 2. 写入密码到剪贴板
+        pasteboard.clearContents()
+        pasteboard.setString(password, forType: .string)
+
+        // 3. 确保密码框有焦点：按 Tab 切换到密码输入框（锁屏界面默认焦点可能在头像）
+        let src = CGEventSource(stateID: .hidSystemState)
+        // 按 Tab 聚焦密码框
+        CGEvent(keyboardEventSource: src, virtualKey: 48, keyDown: true)?.post(tap: .cghidEventTap)
+        usleep(15_000)
+        CGEvent(keyboardEventSource: src, virtualKey: 48, keyDown: false)?.post(tap: .cghidEventTap)
         usleep(120_000)
-        typeString(password)
-        usleep(160_000)
-        tapKey(36) // kVK_Return
+
+        // 4. Cmd+V 粘贴密码
+        let cmdV = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true) // kVK_ANSI_V
+        cmdV?.flags = .maskCommand
+        cmdV?.post(tap: .cghidEventTap)
+        usleep(15_000)
+        let cmdVUp = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
+        cmdVUp?.flags = .maskCommand
+        cmdVUp?.post(tap: .cghidEventTap)
+        usleep(200_000)
+
+        // 5. Return 回车确认
+        CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)?.post(tap: .cghidEventTap)
+        usleep(15_000)
+        CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)?.post(tap: .cghidEventTap)
+
+        // 6. 恢复剪贴板（延迟到解锁后）
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) {
+            if !oldString.isEmpty {
+                pasteboard.clearContents()
+                pasteboard.setString(oldString, forType: .string)
+            }
+        }
     }
 }

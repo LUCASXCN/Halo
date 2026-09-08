@@ -156,6 +156,13 @@ struct ContentView: View {
                     Text("锁屏/登录页不自动黑屏").font(.system(size: 12.5, weight: .medium))
                 }
             }
+            GlassPanel(title: "开机自启动") {
+                Toggle(isOn: Binding(get: { model.coord.launchAtLogin },
+                                      set: { model.coord.launchAtLogin = $0 })) {
+                    Text("登录后自动启动 Halo").font(.system(size: 12.5, weight: .medium))
+                }
+                Text("开启后无需手动打开，蓝牙靠近解锁开机即生效").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
             Spacer(minLength: 0)
             Button(role: .destructive) { model.restoreDefault() } label: {
                 Label("恢复一致（登录页跟随桌面）", systemImage: "arrow.uturn.backward").font(.system(size: 11)).lineLimit(1).frame(maxWidth: .infinity)

@@ -11,7 +11,7 @@ IOSSDK="$XC/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
 TARGET=arm64-apple-ios26
 
 APP=HaloRemote
-VERSION=V1.4
+VERSION=V1.5
 BUILD="$ROOT/build-ios"
 APPDIR="$BUILD/Payload/$APP.app"
 rm -rf "$BUILD"; mkdir -p "$APPDIR"

@@ -9,7 +9,7 @@ BUILD="$ROOT/build"
 APP="$BUILD/Halo.app"
 CONT="$APP/Contents"
 MIN="macos26"
-VERSION="1.4"
+VERSION="1.5"
 
 XC="/Applications/Xcode.app/Contents/Developer"
 SW="$XC/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"

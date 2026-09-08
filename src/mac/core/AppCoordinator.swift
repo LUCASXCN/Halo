@@ -5,6 +5,8 @@
 import Foundation
 import Combine
 import AppKit
+import UserNotifications
+import ServiceManagement
 
 final class AppCoordinator: ObservableObject, HaloServerDatasource {
     static let shared = AppCoordinator()
@@ -19,6 +21,25 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
     @Published var overlayRunning = false
     @Published var selectedDesktopFile: String?
     @Published var selectedLockFile: String?
+    /// 开机自启动（SMAppService，macOS 13+）
+    var launchAtLogin: Bool {
+        get { SMAppService.mainApp.status == .enabled }
+        set {
+            do {
+                if newValue {
+                    if SMAppService.mainApp.status != .enabled {
+                        try SMAppService.mainApp.register()
+                    }
+                } else {
+                    if SMAppService.mainApp.status == .enabled {
+                        try SMAppService.mainApp.unregister()
+                    }
+                }
+            } catch {
+                NSLog("[Halo] 自启动设置失败: \(error)")
+            }
+        }
+    }
 
     private var bag = Set<AnyCancellable>()
     private var started = false
@@ -46,6 +67,9 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
 
         server.datasource = self
         if HaloStore.shared.remoteEnabled { server.start() }
+
+        // 请求通知权限（信号丢失、自动解锁失败等需要发通知）
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         // 钥匙串读取可能触发系统授权弹窗（ad-hoc 重签后授权会重置），
         // 必须放后台异步，绝不能阻塞主线程 —— 否则 server.start() / 菜单栏都不会执行。

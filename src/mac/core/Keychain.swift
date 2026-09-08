@@ -1,5 +1,6 @@
 //
 //  Keychain.swift — 登录密码安全存取（自动解锁用）。仅存本地钥匙串，绝不上传、不出局域网。
+//  V1.5：加内存缓存，避免 ad-hoc 签名 App 反复触发钥匙串授权弹窗
 //
 
 import Foundation
@@ -8,23 +9,32 @@ import Security
 enum Keychain {
     private static let service = HaloCore.bundleID + ".login"
     private static let account = "auto-unlock-password"
+    /// 内存缓存：启动时读一次，后续直接用，避免反复弹钥匙串授权框
+    private static var cachedPassword: String?
+    private static var cacheLoaded = false
 
     @discardableResult
     static func save(password: String) -> Bool {
         guard let data = password.data(using: .utf8) else { return false }
-        // 先删后写，保证更新
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                 kSecAttrService as String: service,
                                 kSecAttrAccount as String: account]
         SecItemDelete(q as CFDictionary)
         var add = q
         add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        // AfterFirstUnlock：开机后第一次解锁即可访问，锁屏期间也能读（自动解锁需要）
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let st = SecItemAdd(add as CFDictionary, nil)
+        if st == errSecSuccess {
+            cachedPassword = password
+            cacheLoaded = true
+        }
         return st == errSecSuccess
     }
 
     static func read() -> String? {
+        // 优先用缓存，避免反复访问钥匙串触发授权弹窗
+        if cacheLoaded { return cachedPassword }
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -35,7 +45,13 @@ enum Keychain {
         var item: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data,
-              let s = String(data: data, encoding: .utf8), !s.isEmpty else { return nil }
+              let s = String(data: data, encoding: .utf8), !s.isEmpty else {
+            cacheLoaded = true
+            cachedPassword = nil
+            return nil
+        }
+        cachedPassword = s
+        cacheLoaded = true
         return s
     }
 
@@ -46,6 +62,9 @@ enum Keychain {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                 kSecAttrService as String: service,
                                 kSecAttrAccount as String: account]
-        return SecItemDelete(q as CFDictionary) == errSecSuccess
+        let ok = SecItemDelete(q as CFDictionary) == errSecSuccess
+        cachedPassword = nil
+        cacheLoaded = true
+        return ok
     }
 }

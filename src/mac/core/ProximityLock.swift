@@ -278,14 +278,24 @@ final class ProximityLock: NSObject, ObservableObject {
         }
     }
 
-    /// 尝试自动解锁：唤醒显示器 → 等密码框就绪 → 输入密码
+    /// 尝试自动解锁：唤醒显示器 → 等密码框就绪 → 粘贴密码+回车
     private func tryAutoUnlock() {
         guard config.autoUnlock, ScreenLocker.shared.isLocked else { return }
         DispatchQueue.main.async {
             ScreenLocker.shared.wakeDisplay()
-            // 等显示器唤醒 + 密码框聚焦（BLEUnlock 保守延迟原理）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                ScreenLocker.shared.autoUnlockFromKeychain()
+            // BLEUnlock conservativeWakeUnlockDelay：显示器唤醒后保守延迟再解锁
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                ScreenLocker.shared.autoUnlockFromKeychain { ok in
+                    if !ok {
+                        // 解锁失败发通知，便于排查
+                        let content = UNMutableNotificationContent()
+                        content.title = "自动解锁失败"
+                        content.body = "设备已靠近但未能解锁，请检查密码是否正确"
+                        content.sound = .default
+                        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                        UNUserNotificationCenter.current().add(req)
+                    }
+                }
             }
         }
     }
