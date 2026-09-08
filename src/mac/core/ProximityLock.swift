@@ -17,9 +17,11 @@ import CoreBluetooth
 import Combine
 import AppKit
 import UserNotifications
+import os.log
 
 final class ProximityLock: NSObject, ObservableObject {
     static let shared = ProximityLock()
+    private let log = OSLog(subsystem: "com.lucas.halo", category: "Proximity")
 
     @Published var state = BLEStateInfo()
     @Published var config = ProximityConfig()
@@ -280,21 +282,35 @@ final class ProximityLock: NSObject, ObservableObject {
 
     /// 尝试自动解锁：唤醒显示器 → 等密码框就绪 → 粘贴密码+回车
     private func tryAutoUnlock() {
-        guard config.autoUnlock, ScreenLocker.shared.isLocked else { return }
+        os_log("🔓 tryAutoUnlock 被调用 autoUnlock=%{public}@ isLocked=%{public}@", log: log, type: .info,
+               config.autoUnlock ? "true" : "false", ScreenLocker.shared.isLocked ? "true" : "false")
+        guard config.autoUnlock else {
+            os_log("🔓 tryAutoUnlock 跳过：autoUnlock=false", log: log, type: .info)
+            return
+        }
+        guard ScreenLocker.shared.isLocked else {
+            os_log("🔓 tryAutoUnlock 跳过：屏幕未锁定", log: log, type: .info)
+            return
+        }
+        os_log("🔓 tryAutoUnlock 开始执行：唤醒显示器", log: log, type: .info)
+        // wakeDisplay 在主线程调用
         DispatchQueue.main.async {
             ScreenLocker.shared.wakeDisplay()
-            // BLEUnlock conservativeWakeUnlockDelay：显示器唤醒后保守延迟再解锁
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                ScreenLocker.shared.autoUnlockFromKeychain { ok in
-                    if !ok {
-                        // 解锁失败发通知，便于排查
-                        let content = UNMutableNotificationContent()
-                        content.title = "自动解锁失败"
-                        content.body = "设备已靠近但未能解锁，请检查密码是否正确"
-                        content.sound = .default
-                        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-                        UNUserNotificationCenter.current().add(req)
-                    }
+        }
+        // 关键：用独立 Thread + sleep，完全不依赖 GCD 队列（锁屏时主队列 runloop 被挂起）
+        Thread.detachNewThread { [weak self] in
+            guard let self else { return }
+            Thread.sleep(forTimeInterval: 0.4)
+            os_log("🔓 tryAutoUnlock 0.4秒后调用 autoUnlockFromKeychain", log: self.log, type: .info)
+            ScreenLocker.shared.autoUnlockFromKeychain { ok in
+                os_log("🔓 tryAutoUnlock 结果：%{public}@", log: self.log, type: .info, ok ? "成功" : "失败")
+                if !ok {
+                    let content = UNMutableNotificationContent()
+                    content.title = "自动解锁失败"
+                    content.body = "设备已靠近但未能解锁，请检查密码是否正确"
+                    content.sound = .default
+                    let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                    UNUserNotificationCenter.current().add(req)
                 }
             }
         }
@@ -350,6 +366,7 @@ extension ProximityLock: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        os_log("📶 didConnect 设备已连接 %{public}@", log: log, type: .info, peripheral.identifier.uuidString)
         cancelDisconnectGrace()
         cancelPendingLock()
         // 设备回近：清除手动解锁暂停标志
@@ -362,10 +379,13 @@ extension ProximityLock: CBCentralManagerDelegate {
         }
         startRssiLoop()
         // BLEUnlock 原理：连接建立即触发解锁（不等 RSSI 判定）
+        os_log("📶 didConnect 调用 tryAutoUnlock", log: log, type: .info)
         tryAutoUnlock()
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        os_log("📶 didDisconnect 设备断开 %{public}@ error=%{public}@", log: log, type: .info,
+               peripheral.identifier.uuidString, error?.localizedDescription ?? "nil")
         stopRssiLoop()
         queue.async { self.engine.reset() }
         DispatchQueue.main.async {

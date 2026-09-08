@@ -32,6 +32,11 @@ enum Keychain {
         return st == errSecSuccess
     }
 
+    /// 预加载缓存（App 启动时调用，此时未锁屏，避免锁屏时访问钥匙串阻塞）
+    static func preload() {
+        _ = read()
+    }
+
     static func read() -> String? {
         // 优先用缓存，避免反复访问钥匙串触发授权弹窗
         if cacheLoaded { return cachedPassword }

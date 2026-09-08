@@ -66,11 +66,12 @@ PLIST
 echo "==> 4/6 生成 PkgInfo"
 echo -n "APPL????" > "$CONT/PkgInfo"
 
-echo "==> 5/6 Ad-hoc 签名（由内向外）"
+echo "==> 5/6 Ad-hoc 签名（由内向外，含 entitlements）"
 codesign --force --sign - "$CONT/Resources/DesktopOverlay"
-codesign --force --sign - "$CONT/MacOS/Halo"
-codesign --force --sign - --identifier com.lucas.halo "$APP"
+codesign --force --sign - --entitlements "$ROOT/Halo.entitlements" "$CONT/MacOS/Halo"
+codesign --force --sign - --entitlements "$ROOT/Halo.entitlements" --identifier com.lucas.halo "$APP"
 echo "    签名校验:"; codesign -vvv "$APP" 2>&1 | sed 's/^/      /'
+echo "    Entitlements:"; codesign -d --entitlements - "$APP" 2>&1 | sed 's/^/      /'
 
 echo "==> 6/6 完成"
 echo "产物：$APP"

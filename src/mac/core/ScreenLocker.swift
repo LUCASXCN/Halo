@@ -16,6 +16,7 @@ import CoreGraphics
 import Foundation
 import IOKit
 import IOKit.pwr_mgt
+import os.log
 
 // MARK: - 私有锁屏符号（编译期两级命名空间静态链接，见 vendor/login.tbd）
 @_silgen_name("SACLockScreenImmediate")
@@ -49,6 +50,7 @@ private final class LockStateReader {
 
 final class ScreenLocker {
     static let shared = ScreenLocker()
+    private let log = OSLog(subsystem: "com.lucas.halo", category: "ScreenLocker")
 
     // 锁屏状态变化回调（主线程）
     var onLockStateChange: ((Bool) -> Void)?
@@ -57,6 +59,9 @@ final class ScreenLocker {
     private var lastLocked = false
     // 分布式通知记录的状态，作为 notify 读取失败时的兜底
     private var notifiedLocked = false
+    // 解锁重入锁：防止 /unlock API 和蓝牙靠近检测同时触发多个解锁流程
+    private var isUnlocking = false
+    private let unlockLock = NSLock()
 
     private init() {}
 
@@ -100,7 +105,15 @@ final class ScreenLocker {
 
     // MARK: 锁屏
 
-    /// 静态链接的私有即时锁屏（与 BLEUnlock 完全相同的调用路径）
+    /// 屏幕保护方式锁屏（关键：屏保退出后的登录窗允许 CGEvent 投递密码，
+    /// 而 SACLockScreenImmediate 直接进入安全会话会拦截所有第三方 CGEvent）
+    private func screensaverLock() -> Bool {
+        let screensaverURL = URL(fileURLWithPath: "/System/Library/CoreServices/ScreenSaverEngine.app")
+        NSWorkspace.shared.open(screensaverURL)
+        return true
+    }
+
+    /// 静态链接的私有即时锁屏（备选：当屏保方式不可用时）
     private func privateLock() -> Bool {
         haloSACLockScreenImmediate()
         return true
@@ -121,21 +134,17 @@ final class ScreenLocker {
 
     func lockNow() {
         DispatchQueue.main.async {
+            // 和 BLEUnlock 一致：默认用 SACLockScreenImmediate 直接进登录页
+            // （entitlements com.apple.security.automation.apple-events 允许 CGEvent 投递到 loginwindow）
             if !self.privateLock() { self.cgeventLock() }
         }
     }
 
     // MARK: 唤醒显示器（靠近解锁时先唤醒，避免黑屏态密码框不显示）
 
-    /// 唤醒显示器 + 持有短时唤醒断言，确保密码框可见后再输入密码
+    /// 唤醒显示器（仅 IOPMAssertion 保持唤醒，不移动鼠标——对齐 BLEUnlock）
     func wakeDisplay() {
-        // 发送一个相对位移为 0 的鼠标事件，唤醒显示器（不改变光标位置）
-        let src = CGEventSource(stateID: .hidSystemState)
-        if let move = CGEvent(mouseEventSource: src, mouseType: .mouseMoved,
-                               mouseCursorPosition: CGPoint(x: 0, y: 0), mouseButton: .left) {
-            move.post(tap: .cghidEventTap)
-        }
-        // 持有 15 秒唤醒断言，防止输入密码期间显示器再次休眠
+        // 持有 15 秒唤醒断言，防止输入密码期间显示器休眠
         var assertion: IOPMAssertionID = 0
         IOPMAssertionCreateWithName(
             "PreventUserIdleDisplaySleep" as CFString,
@@ -143,7 +152,6 @@ final class ScreenLocker {
             "Halo 靠近解锁期间保持显示器唤醒" as CFString,
             &assertion
         )
-        // 15 秒后释放断言
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 15) {
             IOPMAssertionRelease(assertion)
         }
@@ -174,66 +182,107 @@ final class ScreenLocker {
         CGEvent(keyboardEventSource: src, virtualKey: vk, keyDown: false)?.post(tap: tap)
     }
 
-    /// 用 Keychain 中保存的密码自动解锁（BLEUnlock 原理：剪贴板粘贴 + 回车）。
+    /// 用 Keychain 中保存的密码自动解锁（BLEUnlock 原理：CGEventKeyboardSetUnicodeString + 多次重试）。
+    /// 注意：调用方必须在后台线程调用，本方法会阻塞当前线程。
+    /// BLEUnlock 最多重试 8 次，因为唤醒时第一次尝试可能在登录 UI 就绪前执行。
     func autoUnlockFromKeychain(retry: Bool = true, completion: ((Bool) -> Void)? = nil) {
+        // 重入锁：防止多个解锁流程同时执行（互相干扰 Escape/回车/密码投递）
+        unlockLock.lock()
+        if isUnlocking {
+            unlockLock.unlock()
+            debugLog("🔑 autoUnlockFromKeychain 跳过：已有解锁流程在执行")
+            completion?(false)
+            return
+        }
+        isUnlocking = true
+        unlockLock.unlock()
+        defer {
+            unlockLock.lock()
+            isUnlocking = false
+            unlockLock.unlock()
+        }
+
+        debugLog("🔑 autoUnlockFromKeychain 开始 isLocked=\(isLocked)")
         guard isLocked, let password = Keychain.read(), !password.isEmpty else {
+            debugLog("🔑 autoUnlockFromKeychain 中止：isLocked=\(isLocked) hasPassword=\(Keychain.read() != nil)")
             completion?(false); return
         }
-        DispatchQueue.global(qos: .userInitiated).async {
-            // 等登录窗密码框就绪（BLEUnlock conservativeWakeUnlockDelay 原理）
-            usleep(500_000)
-            self.pasteAndUnlock(password)
-            // 校验是否解锁；未解锁则补一次（首帧密码框可能尚未聚焦）
-            usleep(800_000)
-            if self.isLocked && retry {
-                usleep(300_000)
-                self.pasteAndUnlock(password)
-                usleep(800_000)
+        debugLog("🔑 密码已读取(长度\(password.count))")
+
+        // 对齐 BLEUnlock：直接投递密码（entitlements 允许 CGEvent 投递到 loginwindow）
+        // 不需要前置回车或鼠标操作——loginwindow 收到第一个密码字符后会自动显示密码框
+
+        // 最多重试 5 次（BLEUnlock 用 8 次），每次间隔 1.5 秒
+        // 唤醒时第一次尝试可能在登录 UI 完全就绪前执行，需要多次重试
+        let maxAttempts = 5
+        for attempt in 1...maxAttempts {
+            if !isLocked {
+                debugLog("🔑 第\(attempt)次尝试前已解锁，成功")
+                completion?(true)
+                return
             }
-            let ok = !self.isLocked
-            DispatchQueue.main.async { completion?(ok) }
+            debugLog("🔑 第\(attempt)/\(maxAttempts)次尝试投递密码")
+            // 等密码框就绪（第一次等 0.5 秒，后续等 1.5 秒）
+            usleep(attempt == 1 ? 500_000 : 1_500_000)
+            typePasswordViaUnicodeString(password)
+            usleep(1_500_000) // 等系统处理密码+回车+notify状态更新（确保下次循环能检测到已解锁）
+        }
+
+        let ok = !isLocked
+        debugLog("🔑 autoUnlockFromKeychain 最终结果：\(ok ? "成功" : "失败")（\(maxAttempts)次尝试后）")
+        completion?(ok)
+    }
+
+    /// BLEUnlock 核心方式：CGEventKeyboardSetUnicodeString 一次性投递整个密码字符串，然后回车
+    /// 关键：所有 CGEvent 必须在主线程投递（锁屏时后台线程投递的事件可能被系统忽略）
+    private func typePasswordViaUnicodeString(_ password: String) {
+        debugLog("⌨️ typePasswordViaUnicodeString 开始投递密码 (主线程投递)")
+
+        DispatchQueue.main.sync {
+            let src = CGEventSource(stateID: .hidSystemState)
+
+            // 1. 用 CGEventKeyboardSetUnicodeString 投递密码（virtualKey=49 空格键，每20字符一批）
+            let PER = 20
+            let uniCharCount = password.utf16.count
+            var strIndex = password.utf16.startIndex
+            for offset in stride(from: 0, to: uniCharCount, by: PER) {
+                let len = offset + PER < uniCharCount ? PER : uniCharCount - offset
+                let buffer = UnsafeMutablePointer<UniChar>.allocate(capacity: len)
+                for i in 0..<len {
+                    buffer[i] = password.utf16[strIndex]
+                    strIndex = password.utf16.index(after: strIndex)
+                }
+                if let pressEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: true) {
+                    pressEvent.keyboardSetUnicodeString(stringLength: len, unicodeString: buffer)
+                    pressEvent.post(tap: .cghidEventTap)
+                }
+                usleep(15_000)
+                CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: false)?.post(tap: .cghidEventTap)
+                buffer.deallocate()
+                usleep(50_000)
+            }
+            debugLog("⌨️ 密码已投递 (\(uniCharCount)字符)")
+            usleep(200_000)
+
+            // 2. Return 确认（标准 Return vk=36）
+            CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)?.post(tap: .cghidEventTap)
+            usleep(15_000)
+            CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)?.post(tap: .cghidEventTap)
+            debugLog("⌨️ Return 已投递 (vk=36)")
         }
     }
 
-    /// BLEUnlock 式解锁：密码写入剪贴板 → Cmd+V 粘贴 → Return 回车
-    private func pasteAndUnlock(_ password: String) {
-        // 1. 保存当前剪贴板内容，解锁后恢复
-        let pasteboard = NSPasteboard.general
-        let oldItems = pasteboard.pasteboardItems?.map { $0.string(forType: .string) ?? "" } ?? []
-        let oldString = oldItems.first ?? ""
-
-        // 2. 写入密码到剪贴板
-        pasteboard.clearContents()
-        pasteboard.setString(password, forType: .string)
-
-        // 3. 确保密码框有焦点：按 Tab 切换到密码输入框（锁屏界面默认焦点可能在头像）
-        let src = CGEventSource(stateID: .hidSystemState)
-        // 按 Tab 聚焦密码框
-        CGEvent(keyboardEventSource: src, virtualKey: 48, keyDown: true)?.post(tap: .cghidEventTap)
-        usleep(15_000)
-        CGEvent(keyboardEventSource: src, virtualKey: 48, keyDown: false)?.post(tap: .cghidEventTap)
-        usleep(120_000)
-
-        // 4. Cmd+V 粘贴密码
-        let cmdV = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true) // kVK_ANSI_V
-        cmdV?.flags = .maskCommand
-        cmdV?.post(tap: .cghidEventTap)
-        usleep(15_000)
-        let cmdVUp = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
-        cmdVUp?.flags = .maskCommand
-        cmdVUp?.post(tap: .cghidEventTap)
-        usleep(200_000)
-
-        // 5. Return 回车确认
-        CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)?.post(tap: .cghidEventTap)
-        usleep(15_000)
-        CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)?.post(tap: .cghidEventTap)
-
-        // 6. 恢复剪贴板（延迟到解锁后）
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) {
-            if !oldString.isEmpty {
-                pasteboard.clearContents()
-                pasteboard.setString(oldString, forType: .string)
+    /// 文件日志（os_log 在 ad-hoc 签名下可能不输出，用文件更可靠）
+    private func debugLog(_ msg: String) {
+        let line = "\(Date().formatted(.dateTime.hour().minute().second())) \(msg)\n"
+        if let data = line.data(using: .utf8) {
+            let path = "/tmp/halo_unlock_debug.log"
+            if let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            } else {
+                try? data.write(to: URL(fileURLWithPath: path))
             }
         }
     }

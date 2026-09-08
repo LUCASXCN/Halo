@@ -7,6 +7,7 @@ import Combine
 import AppKit
 import UserNotifications
 import ServiceManagement
+import ApplicationServices
 
 final class AppCoordinator: ObservableObject, HaloServerDatasource {
     static let shared = AppCoordinator()
@@ -49,7 +50,26 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
     func boot() {
         guard !started else { return }
         started = true
+        // 预加载钥匙串缓存（启动时未锁屏，避免锁屏时访问钥匙串阻塞导致解锁失败）
+        Keychain.preload()
         locked = locker.isLocked
+
+        // 检测辅助功能权限（自动解锁需要 CGEvent 投递密码到 loginwindow，必须有此权限）
+        // 无权限时事件会被 WindowServer 静默拦截，不会投递到 loginwindow
+        if !AXIsProcessTrusted() {
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "Halo 需要辅助功能权限"
+                alert.informativeText = "自动解锁功能需要模拟键盘输入密码到登录窗口。请在「系统设置 → 隐私与安全性 → 辅助功能」中添加并启用 Halo。\n\n授权后请重启 Halo。"
+                alert.addButton(withTitle: "打开系统设置")
+                alert.addButton(withTitle: "稍后")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            }
+        }
         selectedDesktopFile = HaloStore.shared.string("sel.desktop")
         selectedLockFile = HaloStore.shared.string("sel.lock")
 
@@ -134,8 +154,10 @@ final class AppCoordinator: ObservableObject, HaloServerDatasource {
     func remoteUnlock() {
         guard locker.isLocked else { return }
         locker.wakeDisplay()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            self.locker.autoUnlockFromKeychain()
+        // 关键：用独立 Thread + usleep，完全不依赖 GCD 队列（锁屏时主队列 runloop 被挂起）
+        Thread.detachNewThread { [weak self] in
+            Thread.sleep(forTimeInterval: 0.8)
+            self?.locker.autoUnlockFromKeychain()
         }
     }
 
